@@ -3,25 +3,43 @@ const TokenGenerator = require("uuid-token-generator");
 var bcrypt = require("bcrypt");
 var jwt = require("jsonwebtoken");
 require("dotenv").config();
+const { MongoClient } = require("mongodb");
 const verifyToken = require("./verifyToken");
-const MongoClient = require("mongodb").MongoClient;
-const uri = process.env.MONGO_URI;
-let ACCOUNTS;
+const powerspinDraws = require("./powerspinDraws");
+const dbUri = process.env.MONGO_URI;
+let ACCOUNTS,
+  PLANS,
+  SUBSCRIPTIONS,
+  ROLES,
+  DRAWS = [],
+  ACTIVE = {};
 
 const app = express();
 app.use(express.json());
 const port = process.env.PORT || 9000;
 
-const client = new MongoClient(uri, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
-
-client.connect(async (err) => {
-  ACCOUNTS = client.db("praktoras").collection("accounts");
-});
-
 app.use(express.static("public"));
+
+//----------------getting all the new powerspin draws
+(async () => {
+  powerspinDraws(DRAWS, ACTIVE);
+})();
+//-----------------
+
+//-----------------------connecting to database
+(async () => {
+  const client = await MongoClient.connect(dbUri, {
+    useNewUrlParser: true,
+  }).catch((err) => {
+    console.log(err);
+  });
+  const db = client.db("praktoras");
+  ACCOUNTS = db.collection("accounts");
+  PLANS = db.collection("plans");
+  SUBSCRIPTIONS = db.collection("subscriptions");
+  ROLES = db.collection("roles");
+})();
+//-----------------------------------
 
 app.use(function (req, res, next) {
   res.header(
@@ -41,10 +59,10 @@ app.post("/login", async (req, res) => {
   var myobj = { username: user.username.toLowerCase().trim() };
 
   let db_user = await ACCOUNTS.findOne(myobj);
-  if (!db_user) return res.status(400).json({ token: -1 });
-
-  if (!(await bcrypt.compare(user.password, db_user.password)))
-    return res.status(400).json({ token: -1 });
+  if (!db_user || !(await bcrypt.compare(user.password, db_user.password)))
+    return res
+      .status(400)
+      .json({ token: -1, message: "Λάθος στοιχεία εισόδου." });
 
   const token = jwt.sign(
     { username: db_user.username },
@@ -53,12 +71,35 @@ app.post("/login", async (req, res) => {
       expiresIn: "2h",
     }
   );
-  res.status(200).json({ token, message: "User Found" });
+  res
+    .status(200)
+    .json({ token, username: db_user.username, message: "User Found" });
 });
 
-app.post("/check", verifyToken, (req, res) => {
-  console.log(req.user);
-  res.status(200).json({ message: "hello" });
+app.post("/userInfo", verifyToken, async (req, res) => {
+  let cursor = await SUBSCRIPTIONS.find({ username: req.user.username });
+  let subs = await cursor.toArray();
+
+  for (let i = 0; i < subs.length; i++) {
+    let plan = await PLANS.findOne({ plan_id: subs[i].plan_id });
+    subs[i].name = plan.name;
+  }
+
+  let filteredSubs = subs.filter((e) => {
+    if (e.sub_start < Date.now() && e.sub_end > Date.now()) {
+      return { _id: e._id, name: e.name, start: e.sub_start, end: e.sub_end };
+    }
+  });
+
+  let formattedSubs = filteredSubs.map((e) => {
+    return { _id: e._id, name: e.name, start: e.sub_start, end: e.sub_end };
+  });
+
+  res.status(200).json({ info: req.user, subs: [...formattedSubs] });
+});
+
+app.get("/d", (req, res) => {
+  res.status(200).json({ active: { ...ACTIVE }, results: [...DRAWS] });
 });
 
 const server = app.listen(port, async () => {
