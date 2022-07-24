@@ -1,6 +1,7 @@
 const express = require("express");
 const TokenGenerator = require("uuid-token-generator");
 var bcrypt = require("bcrypt");
+const path = require("path");
 var jwt = require("jsonwebtoken");
 require("dotenv").config();
 const { MongoClient } = require("mongodb");
@@ -18,7 +19,7 @@ const app = express();
 app.use(express.json());
 const port = process.env.PORT || 9000;
 
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "/public")));
 
 //----------------getting all the new powerspin draws
 (async () => {
@@ -98,8 +99,8 @@ app.post("/userInfo", verifyToken, async (req, res) => {
   res.status(200).json({ info: req.user, subs: [...formattedSubs] });
 });
 
-app.get("/d", (req, res) => {
-  res.status(200).json({ active: { ...ACTIVE }, results: [...DRAWS] });
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "/public/index.html"));
 });
 
 const server = app.listen(port, async () => {
