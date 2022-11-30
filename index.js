@@ -1,4 +1,5 @@
 const express = require("express");
+const cors = require("cors");
 const TokenGenerator = require("uuid-token-generator");
 const { JSDOM } = require("jsdom");
 const axios = require("axios");
@@ -26,6 +27,7 @@ let ACCOUNTS,
   ];
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 const port = process.env.PORT || 9000;
 
@@ -44,12 +46,12 @@ app.use(express.static(path.join(__dirname, "/public")));
   }).catch((err) => {
     console.log(err);
   });
+  console.log("connected!");
   const db = client.db("praktoras");
   ACCOUNTS = db.collection("accounts");
   PLANS = db.collection("plans");
   SUBSCRIPTIONS = db.collection("subscriptions");
   ROLES = db.collection("roles");
-  console.log("connected!");
 })();
 //-----------------------------------
 
